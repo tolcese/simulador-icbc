@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estimador ICBC</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  :root{
+    --brand:#C8102E;        /* color de marca ICBC (cambiar acá para otro banco) */
+    --brand-dark:#8a1424;
+    --brand-soft:#fbe9ec;
+    --brand-hint:#ffd9de;
+    --ink:#1a1a1a;
+    --muted:#7a7a7a;
+    --line:#eeeeee;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  body{
+    font-family:"Segoe UI", Arial, Helvetica, sans-serif;
+    background:#f2f3f5;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    padding:24px 14px 60px;
+  }
+
+  /* ----- Barra de herramientas (no se ve en vista cliente ni en la imagen) ----- */
+  .toolbar{
+    max-width:680px; margin:0 auto 16px;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end;
+  }
+  .toolbar .brand-tag{ margin-right:auto; font-weight:700; color:var(--muted); font-size:14px; letter-spacing:.3px; }
+  .btn{
+    font:inherit; font-size:14px; font-weight:600; cursor:pointer;
+    border:1px solid #d5d7db; background:#fff; color:#333;
+    padding:9px 16px; border-radius:9px; transition:.15s;
+  }
+  .btn:hover{ background:#f6f7f8; }
+  .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.primary:hover{ filter:brightness(.94); }
+
+  /* ----- Tarjeta ----- */
+  .card{
+    max-width:680px; margin:0 auto; background:#fff;
+    border:1px solid #e6e6e6; border-radius:14px; overflow:hidden;
+  }
+  .head{ background:var(--brand); padding:26px 34px; }
+  .head .brand{ color:#fff; font-size:30px; font-weight:700; letter-spacing:.5px; }
+  .head .sub{ color:var(--brand-hint); font-size:14px; margin-top:4px; letter-spacing:.3px; }
+
+  /* Inputs editables inline */
+  .edit{
+    border:1px dashed #cfd2d6; border-radius:7px; background:#fff;
+    font:inherit; color:inherit; padding:4px 8px; width:100%;
+  }
+  .edit:focus{ outline:none; border-color:var(--brand); border-style:solid; }
+  .head .edit{ background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.5); color:#fff; }
+  .head .edit::placeholder{ color:rgba(255,255,255,.7); }
+  .head .brand.edit{ font-size:30px; font-weight:700; }
+  .head .sub.edit{ font-size:14px; margin-top:6px; }
+
+  /* Montos */
+  .montos{ display:flex; flex-wrap:wrap; }
+  .mbox{ flex:1 1 50%; padding:22px 34px; min-width:220px; }
+  .mbox.left{ border-right:1px solid var(--line); }
+  .m-label{ font-size:12.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; font-weight:700; }
+  .m-input-wrap{ display:flex; align-items:baseline; gap:6px; margin-top:8px; }
+  .m-input-wrap .peso{ font-size:26px; font-weight:700; color:var(--ink); }
+  input.monto{
+    border:1px dashed #cfd2d6; border-radius:7px; font:inherit;
+    font-size:26px; font-weight:700; color:var(--ink); padding:2px 8px; width:100%;
+  }
+  input.monto:focus{ outline:none; border-color:var(--brand); border-style:solid; }
+  .m-value{ font-size:26px; font-weight:700; margin-top:8px; color:var(--brand); }
+  .desc-note{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+  /* Ajuste del porcentaje (solo edición) */
+  .cfg{ padding:0 34px 6px; }
+  .cfg label{ font-size:13px; color:var(--muted); font-weight:600; }
+  .cfg input{ width:70px; font:inherit; font-size:14px; padding:5px 8px; border:1px solid #d5d7db; border-radius:7px; }
+
+  /* Cuotas */
+  .cuotas-wrap{ padding:8px 34px 26px; }
+  .cuotas-title{ font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; font-weight:700; margin:14px 0 12px; }
+  table.cuotas{ width:100%; border-collapse:collapse; }
+  table.cuotas th{
+    background:var(--brand-soft); color:var(--brand-dark); font-size:13px; font-weight:700;
+    text-align:left; padding:12px 16px; letter-spacing:.3px;
+  }
+  table.cuotas th.r{ text-align:right; }
+  table.cuotas td{ padding:10px 16px; border-bottom:1px solid #efefef; vertical-align:middle; }
+  table.cuotas tr:last-child td{ border-bottom:none; }
+  .cell-plazo{ display:flex; align-items:center; gap:8px; }
+  .cell-plazo input{ width:74px; text-align:center; }
+  .cell-plazo .suf{ color:#444; font-weight:700; font-size:16px; }
+  .cell-monto{ display:flex; align-items:center; justify-content:flex-end; gap:6px; }
+  .cell-monto .peso{ font-size:18px; font-weight:700; }
+  .cell-monto input{ width:150px; text-align:right; font-size:18px; font-weight:700; }
+  .btn-del{
+    border:none; background:none; color:#c00; font-size:20px; line-height:1; cursor:pointer;
+    padding:0 4px; margin-left:6px;
+  }
+  .add-row{ padding:12px 34px 4px; }
+  .btn-add{ font:inherit; font-size:13px; font-weight:700; color:var(--brand); background:none; border:1px dashed var(--brand); border-radius:8px; padding:8px 14px; cursor:pointer; }
+
+  /* Footer */
+  .foot{ border-top:1px solid var(--line); padding:16px 34px 20px; background:#fcfcfc; }
+  .foot .edit{ font-size:11.5px; color:#999; line-height:1.5; border-style:dashed; }
+
+  /* ================= VISTA CLIENTE / IMAGEN ================= */
+  body.cliente{ background:#fff; }
+  body.cliente .toolbar{ display:none; }
+  body.cliente .cfg{ display:none; }
+  body.cliente .add-row{ display:none; }
+  body.cliente .btn-del{ display:none; }
+  body.cliente .card{ box-shadow:none; }
+  body.cliente .edit,
+  body.cliente input.monto,
+  body.cliente .cell-plazo input,
+  body.cliente .cell-monto input{
+    border:none !important; background:transparent !important; padding:0; pointer-events:none;
+  }
+  body.cliente .head .edit{ background:transparent !important; }
+  body.cliente .cell-plazo input{ width:auto; text-align:left; }
+  body.cliente .cell-monto input{ width:auto; }
+  body.cliente tr.vacia{ display:none; }
+  body.cliente .desc-note{ display:none; }
+
+  @media print{
+    body{ background:#fff; padding:0; }
+    .toolbar,.cfg,.add-row,.btn-del{ display:none !important; }
+    .edit,input.monto,.cell-plazo input,.cell-monto input{ border:none !important; background:transparent !important; pointer-events:none; }
+  }
+
+  @media (max-width:520px){
+    .mbox.left{ border-right:none; border-bottom:1px solid var(--line); }
+    .cell-monto input{ width:110px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <span class="brand-tag">Estimador de cuotas · editable</span>
+    <button class="btn" id="btnVista" onclick="toggleVista()">Vista cliente</button>
+    <button class="btn primary" onclick="descargar()">Descargar imagen</button>
+  </div>
+
+  <div class="card" id="card">
+    <div class="head">
+      <input class="brand edit" id="banco" value="Banco ICBC" placeholder="Nombre del banco">
+      <input class="sub edit" id="subtitulo" value="Estimación de crédito prendario" placeholder="Subtítulo">
+    </div>
+
+    <div class="montos">
+      <div class="mbox left">
+        <div class="m-label">Monto del crédito solicitado</div>
+        <div class="m-input-wrap">
+          <span class="peso">$</span>
+          <input class="monto" id="montoSolicitado" inputmode="numeric" placeholder="0" oninput="onMonto()">
+        </div>
+      </div>
+      <div class="mbox">
+        <div class="m-label">Monto final al cliente</div>
+        <div class="m-value" id="montoFinal">$ —</div>
+        <div class="desc-note" id="descNote"></div>
+      </div>
+    </div>
+
+    <div class="cfg">
+      <label>Descuento aplicado: <input id="pct" value="6" inputmode="decimal" oninput="onMonto()"> %</label>
+    </div>
+
+    <div class="cuotas-wrap">
+      <div class="cuotas-title">Valores de cuota</div>
+      <table class="cuotas">
+        <thead>
+          <tr>
+            <th>Cantidad de cuotas</th>
+            <th class="r">Importe de la cuota (sin seguro)</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyCuotas"><!-- filas dinámicas --></tbody>
+      </table>
+    </div>
+    <div class="add-row">
+      <button class="btn-add" onclick="agregarFila()">+ Agregar cuota</button>
+    </div>
+
+    <div class="foot">
+      <input class="edit" id="nota" value="Valores estimados sujetos a aprobación crediticia. No constituye oferta comercial.">
+    </div>
+  </div>
+
+<script>
+  /* ---------- Utilidades de formato (es-AR) ---------- */
+  function soloDigitos(s){ return (s||'').replace(/\D/g,''); }
+  function fmt(n){ return Number(n).toLocaleString('es-AR'); }
+
+  /* ---------- Monto solicitado + cálculo del descuento ---------- */
+  function onMonto(){
+    const inp = document.getElementById('montoSolicitado');
+    const dig = soloDigitos(inp.value);
+    inp.value = dig ? fmt(dig) : '';
+    calcular();
+  }
+  function calcular(){
+    const monto = parseInt(soloDigitos(document.getElementById('montoSolicitado').value) || '0', 10);
+    const pct = parseFloat((document.getElementById('pct').value || '0').replace(',', '.')) || 0;
+    const finalEl = document.getElementById('montoFinal');
+    const noteEl  = document.getElementById('descNote');
+    if(!monto){ finalEl.textContent = '$ —'; noteEl.textContent = ''; return; }
+    const descuento = Math.round(monto * pct / 100);
+    const final = monto - descuento;
+    finalEl.textContent = '$ ' + fmt(final);
+    noteEl.textContent = 'Se descuenta ' + (pct % 1 === 0 ? pct : pct) + '% ($ ' + fmt(descuento) + ')';
+  }
+
+  /* ---------- Filas de cuotas ---------- */
+  function agregarFila(cant, imp){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' +
+        '<div class="cell-plazo">' +
+          '<input class="edit plazo" inputmode="numeric" placeholder="24" value="'+(cant||'')+'" oninput="soloNum(this)">' +
+          '<span class="suf">cuotas</span>' +
+        '</div>' +
+      '</td>' +
+      '<td>' +
+        '<div class="cell-monto">' +
+          '<span class="peso">$</span>' +
+          '<input class="edit importe" inputmode="numeric" placeholder="0" value="'+(imp||'')+'" oninput="fmtImporte(this)">' +
+          '<button class="btn-del" title="Eliminar" onclick="this.closest(\'tr\').remove()">&times;</button>' +
+        '</div>' +
+      '</td>';
+    document.getElementById('tbodyCuotas').appendChild(tr);
+  }
+  function soloNum(el){ el.value = soloDigitos(el.value); }
+  function fmtImporte(el){ const d = soloDigitos(el.value); el.value = d ? fmt(d) : ''; }
+
+  /* ---------- Vista cliente ---------- */
+  function marcarVacias(){
+    document.querySelectorAll('#tbodyCuotas tr').forEach(tr=>{
+      const p = tr.querySelector('.plazo').value.trim();
+      const i = tr.querySelector('.importe').value.trim();
+      tr.classList.toggle('vacia', !p && !i);
+    });
+  }
+  function toggleVista(){
+    const on = document.body.classList.toggle('cliente');
+    if(on) marcarVacias();
+    document.getElementById('btnVista').textContent = on ? 'Volver a editar' : 'Vista cliente';
+  }
+
+  /* ---------- Descargar como imagen ---------- */
+  async function descargar(){
+    const yaCliente = document.body.classList.contains('cliente');
+    if(!yaCliente){ document.body.classList.add('cliente'); marcarVacias(); }
+    const card = document.getElementById('card');
+    try{
+      if(window.html2canvas){
+        const canvas = await html2canvas(card, {scale:2, backgroundColor:'#ffffff'});
+        const a = document.createElement('a');
+        a.download = 'estimador.png';
+        a.href = canvas.toDataURL('image/png');
+        a.click();
+      }else{
+        window.print();
+      }
+    }catch(e){
+      window.print();
+    }finally{
+      if(!yaCliente){
+        document.body.classList.remove('cliente');
+        document.getElementById('btnVista').textContent = 'Vista cliente';
+      }
+    }
+  }
+
+  /* ---------- Arranque: 3 filas en blanco ---------- */
+  agregarFila(); agregarFila(); agregarFila();
+</script>
+</body>
+</html>
