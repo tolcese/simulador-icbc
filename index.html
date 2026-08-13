@@ -197,23 +197,68 @@
   function soloDigitos(s){ return (s||'').replace(/\D/g,''); }
   function fmt(n){ return Number(n).toLocaleString('es-AR'); }
 
+  /* Normaliza cualquier valor pegado/tipeado a formato AR CONSERVANDO todos los
+     decimales (sin redondear). Reglas de separadores:
+       - coma y punto juntos -> el que está más a la derecha es el decimal
+       - solo coma           -> coma decimal (estándar AR)
+       - solo punto:
+            varios puntos     -> miles  (1.234.567)
+            un punto + 3 díg. -> miles  (110.320)
+            un punto + otro   -> decimal (110.3 / 110.36 / 1234.5678) */
+  function normalizeAR(raw){
+    if(raw==null) return '';
+    let s = String(raw).replace(/[^\d.,]/g,'');
+    if(s==='') return '';
+    const c = s.lastIndexOf(','), d = s.lastIndexOf('.');
+    let dec = null;
+    if(c>-1 && d>-1)      dec = c>d ? ',' : '.';
+    else if(c>-1)         dec = ',';
+    else if(d>-1){
+      const parts = s.split('.');
+      if(parts.length>2)          dec = null;                 // 1.234.567 -> miles
+      else dec = (parts[1].length===3) ? null : '.';          // 110.320 -> miles ; 110.36 -> decimal
+    }
+    let intPart, decPart = null;
+    if(dec){
+      const idx = s.lastIndexOf(dec);
+      intPart = s.slice(0,idx).replace(/[.,]/g,'');
+      decPart = s.slice(idx+1).replace(/[.,]/g,'');
+    } else {
+      intPart = s.replace(/[.,]/g,'');
+    }
+    intPart = intPart.replace(/^0+(?=\d)/,'');                 // sin ceros a la izquierda
+    const intFmt = (intPart==='' ? '0' : Number(intPart).toLocaleString('es-AR'));
+    return decPart!==null ? intFmt + ',' + decPart : intFmt;   // conserva los decimales tal cual
+  }
+  /* Texto de un campo -> número real (respeta decimales) */
+  function toNumber(raw){
+    const s = normalizeAR(raw);
+    if(!s) return 0;
+    const v = parseFloat(s.replace(/\./g,'').replace(',','.'));
+    return isNaN(v) ? 0 : v;
+  }
+  /* Muestra $ AR: sin decimales si es entero, con 2 si tiene parte decimal */
+  function money(v){
+    const entero = Math.abs(v % 1) < 1e-9;
+    return v.toLocaleString('es-AR', {minimumFractionDigits: entero?0:2, maximumFractionDigits:2});
+  }
+
   /* ---------- Monto solicitado + cálculo del descuento ---------- */
   function onMonto(){
     const inp = document.getElementById('montoSolicitado');
-    const dig = soloDigitos(inp.value);
-    inp.value = dig ? fmt(dig) : '';
+    inp.value = normalizeAR(inp.value);
     calcular();
   }
   function calcular(){
-    const monto = parseInt(soloDigitos(document.getElementById('montoSolicitado').value) || '0', 10);
+    const monto = toNumber(document.getElementById('montoSolicitado').value);
     const pct = parseFloat((document.getElementById('pct').value || '0').replace(',', '.')) || 0;
     const finalEl = document.getElementById('montoFinal');
     const noteEl  = document.getElementById('descNote');
     if(!monto){ finalEl.textContent = '$ —'; noteEl.textContent = ''; return; }
-    const descuento = Math.round(monto * pct / 100);
+    const descuento = monto * pct / 100;        // sin redondear
     const final = monto - descuento;
-    finalEl.textContent = '$ ' + fmt(final);
-    noteEl.textContent = 'Se descuenta ' + (pct % 1 === 0 ? pct : pct) + '% ($ ' + fmt(descuento) + ')';
+    finalEl.textContent = '$ ' + money(final);
+    noteEl.textContent = 'Se descuenta ' + pct + '% ($ ' + money(descuento) + ')';
   }
 
   /* ---------- Filas de cuotas ---------- */
@@ -236,7 +281,7 @@
     document.getElementById('tbodyCuotas').appendChild(tr);
   }
   function soloNum(el){ el.value = soloDigitos(el.value); }
-  function fmtImporte(el){ const d = soloDigitos(el.value); el.value = d ? fmt(d) : ''; }
+  function fmtImporte(el){ el.value = normalizeAR(el.value); }
 
   /* ---------- Vista cliente ---------- */
   function marcarVacias(){
